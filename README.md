@@ -1,6 +1,6 @@
-# Elixir Ads Filter (Elafi)
+# Elixir Ads Filter (ελάφι)
 
-ελάφι ��https://en.wiktionary.org/wiki/ελάφι#Greek�- 
+https://en.wiktionary.org/wiki/ελάφι#Greek
 
 
 ## Apps
