@@ -1,18 +1,18 @@
 defmodule Dnscache do
-  @moduledoc """
-  Documentation for Dnscache.
-  """
+  use Application
+  require Logger
 
-  @doc """
-  Hello world.
+  def start(_type, _args) do
+    import Supervisor.Spec, warn: true
 
-  ## Examples
+    {_, _, micro} = :os.timestamp()
 
-      iex> Dnscache.hello()
-      :world
+    # :rand.seed(micro)
+    # :rand.seed(:exs64)
 
-  """
-  def hello do
-    :world
+    children = []
+
+    opts = [strategy: :one_for_one, name: Dnscache.Supervisor]
+    Supervisor.start_link(children, opts)
   end
 end
