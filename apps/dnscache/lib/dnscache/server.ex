@@ -55,52 +55,86 @@ defmodule Dnscache.Server do
   # end
 
   defp parse_dns_question(bin) do
-    parse_dns_question_acc(bin, {}, 1, true)
+    parse_dns_question_acc({bin, {}, 1, true})
   end
 
-  defp parse_dns_question_acc(<<>>, acc, _l, _f) do
-    acc
-  end
+  # defp parse_dns_question_acc(
+  #        <<0::8, 0::8, qtype0::8, qtype1::8, qclass0::8, qclass1::8>>,
+  #        acc,
+  #        _l,
+  #        _f
+  #      ) do
+  #   Logger.info(
+  #     "Parsing DNS question(0) -> ret: #{inspect({qtype0, qtype1, qclass0, qclass1})} #{
+  #       inspect(acc)
+  #     }"
+  #   )
 
+  #   qtype = get_qtype({qtype0, qtype1})
+  #   qclass = get_qclass({qclass0, qclass1})
+  #   return = {:q, acc, :qtype, qtype, :qclass, qclass}
+  #   Logger.info("Parsing DNS question(0) -> ret: #{inspect(return)}")
+  #   return
+  # end
 
+  defp parse_dns_question_acc(args) do
+    Logger.info("Parsing DNS question(0) -> args: #{inspect(args)}")
 
-  defp parse_dns_question_acc(bin, acc, l, f) do
-    Logger.info(
-      "Parsing DNS question(0) -> bin: #{inspect(bin)} acc: #{inspect(acc)} l: #{l} f: #{f}"
-    )
+    case args do
+      {<<0::8, 0::8, qtype0::8, qtype1::8, qclass0::8, qclass1::8, _rest::bits>>, acc, _, _} ->
+        qtype = get_qtype({qtype0, qtype1})
+        qclass = get_qclass({qclass0, qclass1})
+        return = {:q, acc, :qtype, qtype, :qclass, qclass}
+        Logger.info("Parsing DNS question(return) -> ret: #{inspect(return)}")
+        return
 
-    case f do
-      true ->
-        <<v::8, tail::bits>> = bin;
-        parse_dns_question_acc(
+      {bin, acc, 1, true} ->
+        <<v::8, tail::bits>> = bin
+
+        parse_dns_question_acc({
           tail,
           Tuple.append(acc, v),
           v,
           false
-        )
+        })
 
-      false ->
-        value = take_n_bits(bin, l, <<>>);
-        r = l * 8;
-        <<_head::size(r), tail::bits>> = bin;
-        parse_dns_question_acc(tail, Tuple.append(acc, value), 1, true)
+      {bin, acc, l, false} ->
+        value = take_n_bits(bin, l, <<>>)
+        r = l * 8
+        <<_head::size(r), tail::bits>> = bin
+        parse_dns_question_acc({tail, Tuple.append(acc, value), 1, true})
     end
   end
 
-  defp take_n_bits(bin, 0, acc) do
-    Logger.info(
-      "Taking bits -> bin: #{inspect(bin)} n: #{inspect(0)} acc: #{inspect acc}"
-    )
+  defp take_n_bits(_bin, 0, acc) do
+    Logger.info("Taking bits -> v: #{inspect('none')} n: #{inspect(0)} acc: #{inspect(acc)}")
     acc
   end
 
   defp take_n_bits(<<v::8, rest::bits>>, n, acc) do
-    Logger.info(
-      "Taking bits -> v: #{inspect(v)} n: #{inspect(n)} acc: #{inspect acc}"
-    )
+    Logger.info("Taking bits -> v: #{inspect(v)} n: #{inspect(n)} acc: #{inspect(acc)}")
     take_n_bits(rest, n - 1, acc <> <<v>>)
   end
 
+  defp get_qtype(qtype) do
+    case qtype do
+      {1, 0} -> 'A'
+      {2, 0} -> 'NS'
+      {5, 0} -> 'CNAME'
+      {6, 0} -> 'SOA'
+      {12, 0} -> 'PTR'
+      {15, 0} -> 'MX'
+      {28, 0} -> 'AAAA'
+      {33, 0} -> 'SRV'
+      {255, 0} -> 'ANY'
+    end
+  end
+
+  defp get_qclass(qclass) do
+    case qclass do
+      {1, 0} -> 'IN'
+    end
+  end
 
   def id_atom, do: __MODULE__
 
