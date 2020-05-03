@@ -103,8 +103,7 @@ defmodule Dnscache.Server do
   defp create_response(id, qname, qtype, qclass) do
     # THIS FUNCTION IS A DISASTER ZONE AT THIS STAGE
     # MUST BE CLEANED UP AND SPLIT TO SMALLER CHUNKS
-    response_header =
-      <<id::16, 1::1, 0::4, 0::1, 0::1, 0::1, 0::1, 0::3, 0::4, 1::16, 1::16, 0::16, 0::16>>
+    response_header = create_reponse_header(id)
 
     #   id,     qr,   op,   aa,   tc,   rd,   ra,   z,    rc,   qdc,   anc,   nsc,   arc
     name = get_name(qname)
@@ -121,6 +120,10 @@ defmodule Dnscache.Server do
         ttl <> <<4::unsigned-integer-size(16)>> <> <<155::8, 33::8, 17::8, 68::8>>
 
     response_header <> response_answer
+  end
+
+  defp create_reponse_header(id) do
+      <<id::16, 1::1, 0::4, 0::1, 0::1, 0::1, 0::1, 0::3, 0::4, 1::16, 1::16, 0::16, 0::16>>
   end
 
   defp qtype_to_string(qtype) do
@@ -171,6 +174,8 @@ defmodule Dnscache.Server do
   defp get_name(qname) do
     :erlang.list_to_binary(Tuple.to_list(qname))
   end
+
+  def encode_ip({a, b, c, d}), do: <<a, b, c, d>>
 
   def id_atom, do: __MODULE__
 

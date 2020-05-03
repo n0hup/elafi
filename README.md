@@ -12,27 +12,48 @@ https://en.wiktionary.org/wiki/ελάφι#Greek
 
 ### DNS
 
-### Header
+#### Message Format
+
+All communications inside of the domain protocol are carried in a single
+format called a message.  The top level format of message is divided
+into 5 sections (some of which are empty in certain cases) shown below:
+
+    +---------------------+
+    |        Header       |
+    +---------------------+
+    |       Question      | the question for the name server
+    +---------------------+
+    |        Answer       | RRs answering the question
+    +---------------------+
+    |      Authority      | RRs pointing toward an authority
+    +---------------------+
+    |      Additional     | RRs holding additional information
+    +---------------------+
+
+
+
+##### Header
 
 https://www.zytrax.com/books/dns/ch15/#header
 
-### Question
+##### Question
 
 https://www.zytrax.com/books/dns/ch15/#question
 
-### Answer
+##### Answer
 
 https://www.zytrax.com/books/dns/ch15/#answer
 
-### Authority
+##### Authority
 
 https://www.zytrax.com/books/dns/ch15/#authority
 
-### Additional
+##### Additional
 
 https://www.zytrax.com/books/dns/ch15/#additional
 
 ## Resources
 
+- https://www.ietf.org/rfc/rfc1035.txt
 - https://www.zytrax.com/books/dns/ch15/
 - https://www2.cs.duke.edu/courses/fall16/compsci356/DNS/DNS-primer.pdf
