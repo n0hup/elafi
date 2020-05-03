@@ -30,100 +30,100 @@ defmodule Dnscache.Server do
           socket,
           source_ip,
           source_port,
-          <<id::16, qr::1, opcode::4, aa::1, tc::1, rd::1, ra::1, z::3, rcode::4,
-            qdcount::unsigned-integer-size(16), ancount::unsigned-integer-size(16),
-            nscount::unsigned-integer-size(16), arcount::unsigned-integer-size(16), rest::bits>>
+          <<raw_header::bits-size(96), rest::bits>>
         },
         state
       ) do
-    parsed_header =
-      {:id, id, :qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :z, z, :rcode,
-       rcode, :qdcount, qdcount, :ancount, ancount, :nscount, nscount, :arcount, arcount}
+    Logger.info("handle_info (raw_header) #{inspect(raw_header)}")
 
-    parsed_question = parse_dns_question(rest)
-    Logger.info("Received DNS packet #{inspect(parsed_header)} #{inspect(parsed_question)}")
-    {:qname, qname, :qtype, qtype, :qclass, qclass} = parsed_question
+    <<id::unsigned-integer-size(16), raw_flags::bits-size(16), qdcount::unsigned-integer-size(16),
+      ancount::unsigned-integer-size(16), nscount::unsigned-integer-size(16),
+      arcount::unsigned-integer-size(16)>> = raw_header
 
-    response = create_response(id, qname, qtype, qclass)
-    Logger.info("Sending DNS packet #{inspect(response)}")
+    {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
+     :res3, res3, :rcode, rcode} = parse_header_flags(raw_flags)
+
+    Logger.info(
+      "handle_info id: #{id}, flags: #{
+        inspect(
+          {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
+           :res3, res3, :rcode, rcode}
+        )
+      }, qdc: #{qdcount}, anc: #{ancount}, nsc: #{nscount}, arc: #{arcount}"
+    )
+
+    {:raw_question, raw_question, :parsed, {:qname, qname, :qtype, qtype, :qclass, qclass}} =
+      parse_dns_question(rest)
+
+    Logger.info("handle_info #{inspect({:qname, qname, :qtype, qtype, :qclass, qclass})}")
+
+    response =
+      create_reponse_header(id) <>
+        raw_question <> create_response_answer(raw_question, qtype, qclass)
 
     :gen_udp.send(socket, source_ip, source_port, response)
     {:noreply, state}
   end
 
-  def handle_info({:udp, socket, source_ip, source_port, packet}, state) do
-    Logger.info("Received packet #{inspect(packet)}")
-    :gen_udp.send(socket, source_ip, source_port, packet)
+  def handle_info(
+        {
+          :udp,
+          socket,
+          source_ip,
+          source_port,
+          catch_all
+        },
+        state
+      ) do
+    Logger.error("Received DNS packet (catch_all) #{inspect(catch_all)}")
+
+    :gen_udp.send(socket, source_ip, source_port, catch_all)
     {:noreply, state}
   end
 
   defp parse_dns_question(bin) do
-    parse_dns_question_acc({bin, {}, 1, true})
+    [qname_raw, rest] = :binary.split(bin, <<0::8, 0::8>>)
+
+    qname = for <<len, name::binary-size(len) <- qname_raw>>, do: name
+
+    <<qtype0::8, qtype1::8, qclass0::8, qclass1::8, _rest::bits>> = rest
+
+    {:ok, qtype} = qtype_to_string({qtype0, qtype1})
+    {:ok, qclass} = qclass_to_string({qclass0, qclass1})
+
+    raw_question = qname_raw <> <<0::8, 0::8>> <> <<qtype0::8, qtype1::8, qclass0::8, qclass1::8>>
+
+    {:raw_question, raw_question, :parsed, {:qname, qname, :qtype, qtype, :qclass, qclass}}
   end
 
-  defp parse_dns_question_acc(args) do
-    Logger.info("Parsing DNS question(0) -> args: #{inspect(args)}")
-
-    case args do
-      {<<0::8, 0::8, qtype0::8, qtype1::8, qclass0::8, qclass1::8, rest::bits>>, acc, _, _} ->
-        # todo error handling?
-        {:ok, qtype} = qtype_to_string({qtype0, qtype1})
-        {:ok, qclass} = qclass_to_string({qclass0, qclass1})
-        return = {:qname, acc, :qtype, qtype, :qclass, qclass}
-        Logger.info("Parsing DNS question(return) -> rest: #{inspect(rest)}")
-        Logger.info("Parsing DNS question(return) -> ret: #{inspect(return)}")
-        return
-
-      {<<v::8, tail::bits>>, acc, 1, true} ->
-        parse_dns_question_acc({
-          tail,
-          Tuple.append(acc, v),
-          v,
-          false
-        })
-
-      {bin, acc, l, false} ->
-        value = take_n_bits(bin, l, <<>>)
-        r = l * 8
-        <<_head::size(r), tail::bits>> = bin
-        parse_dns_question_acc({tail, Tuple.append(acc, value), 1, true})
-    end
+  defp generate_dns_question(question) do
+    List.foldl(question, [], fn x, acc -> [x] ++ [String.length(x)] ++ acc end)
   end
 
-  defp take_n_bits(_bin, 0, acc) do
-    Logger.info("Taking bits -> v: #{inspect('none')} n: #{inspect(0)} acc: #{inspect(acc)}")
-    acc
-  end
-
-  defp take_n_bits(<<v::8, rest::bits>>, n, acc) do
-    Logger.info("Taking bits -> v: #{inspect(v)} n: #{inspect(n)} acc: #{inspect(acc)}")
-    take_n_bits(rest, n - 1, acc <> <<v>>)
-  end
-
-  defp create_response(id, qname, qtype, qclass) do
-    # THIS FUNCTION IS A DISASTER ZONE AT THIS STAGE
-    # MUST BE CLEANED UP AND SPLIT TO SMALLER CHUNKS
-    response_header = create_reponse_header(id)
-
-    #   id,     qr,   op,   aa,   tc,   rd,   ra,   z,    rc,   qdc,   anc,   nsc,   arc
-    name = get_name(qname)
-    {:ok, type} = string_to_qtype(qtype)
-    {:ok, class} = string_to_qclass(qclass)
-
-    # TODO: pls no
-    ttl = <<60::unsigned-integer-size(32)>>
-
-    response_answer =
-      name <>
-        :erlang.list_to_binary(Tuple.to_list(type)) <>
-        :erlang.list_to_binary(Tuple.to_list(class)) <>
-        ttl <> <<4::unsigned-integer-size(16)>> <> <<155::8, 33::8, 17::8, 68::8>>
-
-    response_header <> response_answer
+  defp parse_header_flags(
+         <<qr::unsigned-integer-size(1), opcode::unsigned-integer-size(4),
+           aa::unsigned-integer-size(1), tc::unsigned-integer-size(1),
+           rd::unsigned-integer-size(1), ra::unsigned-integer-size(1),
+           res1::unsigned-integer-size(1), res2::unsigned-integer-size(1),
+           res3::unsigned-integer-size(1), rcode::unsigned-integer-size(4)>>
+       ) do
+    {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
+     :res3, res3, :rcode, rcode}
   end
 
   defp create_reponse_header(id) do
-      <<id::16, 1::1, 0::4, 0::1, 0::1, 0::1, 0::1, 0::3, 0::4, 1::16, 1::16, 0::16, 0::16>>
+    <<id::16, 1::1, 0::4, 0::1, 0::1, 0::1, 0::1, 0::3, 0::4, 1::16, 1::16, 0::16, 0::16>>
+  end
+
+  defp create_response_answer(raw_question, qtype, qclass) do
+    Logger.info("#{inspect({raw_question, qtype, qclass})}")
+    {:ok, {qt0, qt1}} = string_to_qtype(qtype)
+    {:ok, {qc0, qc1}} = string_to_qclass(qclass)
+
+    raw_question <>
+      <<qt0::8>> <>
+      <<qt1::8>> <>
+      <<qc0::8>> <> <<qc1::8>> <> <<60::32>> <> <<4::16>> <> <<127, 0, 0, 1>>
   end
 
   defp qtype_to_string(qtype) do
