@@ -31,6 +31,35 @@ into 5 sections (some of which are empty in certain cases) shown below:
     +---------------------+
 
 
+Header + Question must be included for both request and reponse. Answer can be compressed with pointers to the question section.
+
+Example query and response without pointers:
+
+
+                         +-----------------------------------------+
+           Header        |          OPCODE=IQUERY, ID=123          |
+                         +-----------------------------------------+
+          Question       |  QTYPE=A, QCLASS=IN, QNAME=WEB.MIT.EDU  |
+                         +-----------------------------------------+
+           Answer        |                 <empty>                 |
+                         +-----------------------------------------+
+          Authority      |                 <empty>                 |
+                         +-----------------------------------------+
+         Additional      |                 <empty>                 |
+                         +-----------------------------------------+
+
+
+                         +-----------------------------------------+
+           Header        |         OPCODE=RESPONSE, ID=123         |
+                         +-----------------------------------------+
+          Question       |  QTYPE=A, QCLASS=IN, QNAME=WEB.MIT.EDU  |
+                         +-----------------------------------------+
+           Answer        |       WEB.MIT.EDU A IN 104.96.143.80    |
+                         +-----------------------------------------+
+          Authority      |                 <empty>                 |
+                         +-----------------------------------------+
+         Additional      |                 <empty>                 |
+                         +-----------------------------------------+                         
 
 ##### Header
 
