@@ -2,6 +2,7 @@ defmodule Dnscache.Server do
   use GenServer
   require Logger
 
+  @spec start_link(any) :: :ignore | {:error, any} | {:ok, pid}
   def start_link(args) do
     Logger.info("Dnscache.Server is starting")
     Logger.info("Dnscache.Server.start_link, args: #{inspect(args)}")
@@ -175,8 +176,10 @@ defmodule Dnscache.Server do
     :erlang.list_to_binary(Tuple.to_list(qname))
   end
 
+  @spec encode_ip({integer, integer, integer, integer}) :: <<_::32>>
   def encode_ip({a, b, c, d}), do: <<a, b, c, d>>
 
+  @spec id_atom :: Dnscache.Server
   def id_atom, do: __MODULE__
 
   defp ip_to_string({o0, o1, o2, o3}), do: "#{o0}.#{o1}.#{o2}.#{o3}"

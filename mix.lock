@@ -1,4 +1,0 @@
-%{
-  "base32": {:hex, :base32, "0.1.0", "044f6dc95709727ca2176f3e97a41ddaa76b5bc690d3536908618c0cb32616a2", [:rebar3], [], "hexpm", "10a73951d857d8cb1eceea8eb96c6941f6a76e105947ad09c2b73977dee07638"},
-  "dns_erlang": {:hex, :dns_erlang, "1.1.0", "1e3ea9bd45977198f5f1f3b0fbcc52db3efe9661669a43dba4b9f7917460040d", [:rebar3], [{:base32, "~>0.1.0", [hex: :base32, repo: "hexpm", optional: false]}], "hexpm", "dbcc00560cb76c49eb70c40f931bba1177cfc28463ffed6303200ccf88bf2d6e"},
-}

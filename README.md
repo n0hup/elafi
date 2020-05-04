@@ -2,13 +2,29 @@
 
 https://en.wiktionary.org/wiki/ελάφι#Greek
 
-
 ## Apps
 
 - dnsauth: authoritative nameserver, for lan
 - dnscache: recursive resolver
 - shades: blacklist/whitelist
 - webui: settings & monitoring
+
+## Motivation
+
+Fighting ads supposed to be more accessible. I really like Pihole but it has more dependencies that I am comfortable with (dnsmasq, lighttpd, php, Bootstrap 3.x, etc.).
+
+## Dependecies
+
+I try to not to use any dependecies. Esqlite is a NIF based library. It might be worth to start up as a separate application.
+
+```Elixir
+  defp deps do
+    [
+      {:esqlite, "~> 0.4.1"},
+      {:elli, "~> 3.2"}
+    ]
+  end
+```
 
 ### DNS
 
