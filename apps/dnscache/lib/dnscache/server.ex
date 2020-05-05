@@ -62,7 +62,7 @@ defmodule Dnscache.Server do
 
     response =
       create_reponse_header(id) <>
-        raw_question <> create_response_answer(raw_question, qtype, qclass)
+        raw_question <> raw_question <> create_response_answer()
 
     :gen_udp.send(socket, source_ip, source_port, response)
     {:noreply, state}
@@ -137,15 +137,8 @@ defmodule Dnscache.Server do
       ancount::16, nscount::16, arcount::16>>
   end
 
-  defp create_response_answer(raw_question, qtype, qclass) do
-    Logger.info("create_response_answer #{inspect({raw_question, qtype, qclass})}")
-    {:ok, {qt0, qt1}} = string_to_qtype(qtype)
-    {:ok, {qc0, qc1}} = string_to_qclass(qclass)
-
-    raw_question <>
-      <<qt0::8>> <>
-      <<qt1::8>> <>
-      <<qc0::8>> <> <<qc1::8>> <> <<60::32>> <> <<4::16>> <> <<127::8, 0::8, 0::8, 1::88>>
+  defp create_response_answer() do
+    <<60::32>> <> <<4::16>> <> <<127::8, 0::8, 0::8, 1::88>>
   end
 
   defp qtype_to_string(qtype) do
