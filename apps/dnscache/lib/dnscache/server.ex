@@ -43,14 +43,24 @@ defmodule Dnscache.Server do
           socket,
           source_ip,
           source_port,
-          <<query_header_id_raw::unsigned-integer-size(16), query_header_flags_raw::bits-size(16),
-            query_header_qdcount_raw::unsigned-integer-size(16),
-            query_header_ancount_raw::unsigned-integer-size(16),
-            query_header_nscount_raw::unsigned-integer-size(16),
-            query_header_arcount_raw::unsigned-integer-size(16), query_rest_raw::bits>>
+          dns_query_raw
         },
         state
       ) do
+    <<query_header_id_raw::unsigned-integer-size(16), query_header_flags_raw::bits-size(16),
+      query_header_qdcount_raw::unsigned-integer-size(16),
+      query_header_ancount_raw::unsigned-integer-size(16),
+      query_header_nscount_raw::unsigned-integer-size(16),
+      query_header_arcount_raw::unsigned-integer-size(16), query_rest_raw::bits>> = dns_query_raw
+
+    Logger.info("#{inspect(dns_query_raw)}")
+
+    {:ok, client_socket} = :gen_udp.open(0, [:binary, {:active, false}])
+    :gen_udp.send(client_socket, {1, 1, 1, 1}, 53, dns_query_raw)
+    {:ok, {_ip, _port, resp}} = :gen_udp.recv(client_socket, 0, 5_000)
+
+    Logger.info("#{inspect(resp)}")
+
     Logger.info(
       "handle_info #{
         inspect(
@@ -70,7 +80,7 @@ defmodule Dnscache.Server do
      {question_qname_parsed, question_qtype_string, question_qclass_string}, :rest,
      query_rest_raw_after_question} = parse_dns_question(query_rest_raw)
 
-    for <<x::bits-size(8) <- question_qname_raw>>, do: Logger.info("#{inspect(x)}")
+    # for <<x::bits-size(8) <- question_qname_raw>>, do: Logger.info("#{inspect(x)}")
 
     Logger.info(
       "handle_info #{
@@ -83,12 +93,29 @@ defmodule Dnscache.Server do
 
     if query_header_arcount_raw == 1 do
       {:ok, :ok} = parse_dns_additional(query_rest_raw_after_question)
-      for <<x::bits-size(8) <- query_rest_raw_after_question>>, do: Logger.info("#{inspect(x)}")
+      # for <<x::bits-size(8) <- query_rest_raw_after_question>>, do: Logger.info("#{inspect(x)}")
     end
 
-    create_reponse_header(query_header_id_raw)
+    _reponse_header = create_reponse_header(query_header_id_raw)
+    _response_question = question_qname_raw <> <<question_qtype_int>> <> <<question_qclass_int>>
 
-    :gen_udp.send(socket, source_ip, source_port, create_reponse_header(query_header_id_raw))
+    _response_answer =
+      create_response_answer(
+        question_qname_raw,
+        question_qtype_int,
+        question_qclass_int,
+        60,
+        4,
+        <<127, 0, 0, 1>>
+      )
+
+    :gen_udp.send(
+      socket,
+      source_ip,
+      source_port,
+      resp
+    )
+
     {:noreply, state}
   end
 
@@ -121,16 +148,16 @@ defmodule Dnscache.Server do
 
   defp parse_dns_question(query_rest_raw) do
     [question_qname_raw, rest] = :binary.split(query_rest_raw, <<0::8>>)
-    Logger.info("#{inspect(question_qname_raw)} : #{inspect(rest)}")
     <<question_qtype_int::16, question_qclass_int::16, remaining::bits>> = rest
 
     question_qname_parsed = for <<len, name::binary-size(len) <- question_qname_raw>>, do: name
     question_qtype_string = qtype_to_string(question_qtype_int)
     question_qclass_string = qclass_to_string(question_qclass_int)
 
-    return = {:question_qname_raw, question_qname_raw, :question_qtype_int, question_qtype_int,
-    :question_qclass_int, question_qclass_int, :question_parsed,
-    {question_qname_parsed, question_qtype_string, question_qclass_string}, :rest, remaining}
+    return =
+      {:question_qname_raw, question_qname_raw, :question_qtype_int, question_qtype_int,
+       :question_qclass_int, question_qclass_int, :question_parsed,
+       {question_qname_parsed, question_qtype_string, question_qclass_string}, :rest, remaining}
 
     Logger.info("#{inspect(return)}")
 
@@ -171,8 +198,8 @@ defmodule Dnscache.Server do
       ancount::16, nscount::16, arcount::16>>
   end
 
-  defp create_response_answer() do
-    <<60::32>> <> <<4::16>> <> <<127::8, 0::8, 0::8, 1::88>>
+  defp create_response_answer(name, type, class, ttl, rlength, rdata) do
+    name <> <<type::16>> <> <<class::16>> <> <<ttl::32>> <> <<rlength::16>> <> rdata
   end
 
   defp qtype_to_string(qtype) do
