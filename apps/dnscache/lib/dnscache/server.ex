@@ -17,7 +17,8 @@ defmodule Dnscache.Server do
     case :gen_udp.open(udp_port, [:binary, {:active, true}, {:ip, udp_ip}]) do
       {:ok, udp_socket} ->
         Logger.info("Started listener on #{ip_to_string(udp_ip)} : #{udp_port}")
-        {:ok, %{ip: udp_ip, port: udp_port, socket: udp_socket}}
+        {:ok, client_socket} = :gen_udp.open(0, [:binary, {:active, false}])
+        {:ok, %{ip: udp_ip, port: udp_port, socket: udp_socket, client_socket: client_socket}}
 
       {:error, :eacces} ->
         Logger.error(
@@ -53,11 +54,16 @@ defmodule Dnscache.Server do
       query_header_nscount_raw::unsigned-integer-size(16),
       query_header_arcount_raw::unsigned-integer-size(16), query_rest_raw::bits>> = dns_query_raw
 
+      Logger.info("State: #{inspect(state)}")
     Logger.info("#{inspect(dns_query_raw)}")
 
     {:ok, client_socket} = :gen_udp.open(0, [:binary, {:active, false}])
     :gen_udp.send(client_socket, {1, 1, 1, 1}, 53, dns_query_raw)
+
+    # This can be :ok or :error - needs a strategy of retry
     {:ok, {_ip, _port, resp}} = :gen_udp.recv(client_socket, 0, 5_000)
+    # {:error, :timeout}
+
 
     Logger.info("#{inspect(resp)}")
 
