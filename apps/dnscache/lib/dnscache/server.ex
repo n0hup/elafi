@@ -19,8 +19,20 @@ defmodule Dnscache.Server do
         Logger.info("Started listener on #{ip_to_string(udp_ip)} : #{udp_port}")
         {:ok, %{ip: udp_ip, port: udp_port, socket: udp_socket}}
 
+      {:error, :eacces} ->
+        Logger.error(
+          "Could NOT start listener on #{ip_to_string(udp_ip)} : #{udp_port}, reason:  Permission denied"
+        )
+
+        {:error, "Permission denied"}
+
       {:error, reason} ->
-        Logger.error("Could NOT start listener on #{udp_ip} : #{udp_port}, reason: #{reason}")
+        Logger.error(
+          "Could NOT start listener on #{ip_to_string(udp_ip)} : #{udp_port}, reason: #{
+            inspect(reason)
+          }"
+        )
+
         {:error, reason}
     end
   end
@@ -31,40 +43,53 @@ defmodule Dnscache.Server do
           socket,
           source_ip,
           source_port,
-          <<id::unsigned-integer-size(16), raw_flags::bits-size(16),
-            qdcount::unsigned-integer-size(16), ancount::unsigned-integer-size(16),
-            nscount::unsigned-integer-size(16), arcount::unsigned-integer-size(16), rest::bits>>
+          <<header_raw_id::unsigned-integer-size(16), header_raw_flags::bits-size(16),
+            header_raw_qdcount::unsigned-integer-size(16),
+            header_raw_ancount::unsigned-integer-size(16),
+            header_raw_nscount::unsigned-integer-size(16),
+            header_raw_arcount::unsigned-integer-size(16), dns_raw_rest::bits>>
         },
         state
       ) do
-    # This has to be debugging once development is done
-    if Logger.level() == :info do
-      {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
-       :res3, res3, :rcode, rcode} = parse_header_flags(raw_flags)
+    Logger.info(
+      "handle_info #{
+        inspect(
+          {:header_raw_id, header_raw_id, :header_raw_flags, header_raw_flags,
+           :header_raw_qdcount, header_raw_qdcount, :header_raw_ancount, header_raw_ancount,
+           :header_raw_nscount, header_raw_nscount, :header_raw_arcount, header_raw_arcount,
+           :dns_raw_rest, dns_raw_rest}
+        )
+      }"
+    )
 
-      Logger.info(
-        "handle_info id: #{id}, flags: #{
-          inspect(
-            {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2,
-             res2, :res3, res3, :rcode, rcode}
-          )
-        }, qdc: #{qdcount}, anc: #{ancount}, nsc: #{nscount}, arc: #{arcount}"
-      )
+    Logger.info("parse_header_flags: #{inspect(parse_header_flags(header_raw_flags))}")
+
+    {:question_raw_qname, question_raw_qname, :question_raw_qtype, question_raw_qtype,
+     :question_raw_qclass, question_raw_qclass, :question_parsed,
+     {question_parsed_qname, question_parsed_qtype, question_parsed_qclass}, :rest,
+     dns_raw_rest_after_question} = parse_dns_question(dns_raw_rest)
+
+    for <<x::bits-size(8) <- question_raw_qname>>, do: Logger.info("#{inspect(x)}")
+
+    for <<x::bits-size(8) <- question_raw_qtype>>, do: Logger.info("#{inspect(x)}")
+
+    for <<x::bits-size(8) <- question_raw_qclass>>, do: Logger.info("#{inspect(x)}")
+
+    Logger.info(
+      "handle_info #{
+        inspect(
+          {:qname, question_parsed_qname, :qtype, question_parsed_qtype, :qclass,
+           question_parsed_qclass}
+        )
+      }"
+    )
+
+    if header_raw_arcount == 1 do
+      {:ok, :ok} = parse_dns_additional(dns_raw_rest_after_question)
+      for <<x::bits-size(8) <- dns_raw_rest_after_question>>, do: Logger.info("#{inspect(x)}")
     end
 
-    {:raw_question, raw_question, :parsed_question,
-     {:qname, qname, :qtype, qtype, :qclass, qclass}, :rest,
-     raw_additional} = parse_dns_question(rest)
-
-    Logger.info("handle_info #{inspect({:qname, qname, :qtype, qtype, :qclass, qclass})}")
-
-    {:ok, _miez} = parse_dns_additional(raw_additional)
-
-    response =
-      create_reponse_header(id) <>
-        raw_question <> raw_question <> create_response_answer()
-
-    :gen_udp.send(socket, source_ip, source_port, response)
+    :gen_udp.send(socket, source_ip, source_port, <<0::32>>)
     {:noreply, state}
   end
 
@@ -84,25 +109,32 @@ defmodule Dnscache.Server do
     {:noreply, state}
   end
 
-  defp parse_dns_additional(bin) do
-    Logger.info("parse_dns_additional #{inspect(bin)}")
+  defp parse_dns_additional(<<1::1, 1::1, rest::bits>>) do
+    Logger.info("parse_dns_additional(pointer) #{inspect(rest)}")
     {:ok, :ok}
   end
 
-  defp parse_dns_question(bin) do
-    [qname_raw, rest] = :binary.split(bin, <<0::8, 0::8>>)
+  defp parse_dns_additional(dns_additional) do
+    Logger.info("parse_dns_additional(label) #{inspect(dns_additional)}")
 
-    qname = for <<len, name::binary-size(len) <- qname_raw>>, do: name
+    {:ok, :ok}
+  end
 
-    <<qtype0::8, qtype1::8, qclass0::8, qclass1::8, rest::bits>> = rest
+  defp parse_dns_question(dns_raw_rest) do
+    [question_raw_qname, rest] = :binary.split(dns_raw_rest, <<0::8, 0::8>>)
+    Logger.info("#{inspect(question_raw_qname)} : #{inspect(rest)}")
+    <<qtype0::8, qtype1::8, qclass0::8, qclass1::8, remaining::bits>> = rest
 
-    {:ok, qtype} = qtype_to_string({qtype0, qtype1})
-    {:ok, qclass} = qclass_to_string({qclass0, qclass1})
+    question_parsed_qname = for <<len, name::binary-size(len) <- question_raw_qname>>, do: name
+    question_parsed_qtype = qtype_to_string({qtype0, qtype1})
+    question_parsed_qclass = qclass_to_string({qclass0, qclass1})
 
-    raw_question = qname_raw <> <<0::8, 0::8>> <> <<qtype0::8, qtype1::8, qclass0::8, qclass1::8>>
+    question_raw_qtype = <<qtype0>> <> <<qtype1>>
+    question_raw_qclass = <<qclass0>> <> <<qclass1>>
 
-    {:raw_question, raw_question, :parsed_question,
-     {:qname, qname, :qtype, qtype, :qclass, qclass}, :rest, rest}
+    {:question_raw_qname, question_raw_qname, :question_raw_qtype, question_raw_qtype,
+     :question_raw_qclass, question_raw_qclass, :question_parsed,
+     {question_parsed_qname, question_parsed_qtype, question_parsed_qclass}, :rest, remaining}
   end
 
   defp generate_dns_question(question) do
