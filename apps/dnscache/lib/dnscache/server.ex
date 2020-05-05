@@ -31,32 +31,34 @@ defmodule Dnscache.Server do
           socket,
           source_ip,
           source_port,
-          <<raw_header::bits-size(96), rest::bits>>
+          <<id::unsigned-integer-size(16), raw_flags::bits-size(16),
+            qdcount::unsigned-integer-size(16), ancount::unsigned-integer-size(16),
+            nscount::unsigned-integer-size(16), arcount::unsigned-integer-size(16), rest::bits>>
         },
         state
       ) do
-    Logger.info("handle_info (raw_header) #{inspect(raw_header)}")
+    # This has to be debugging once development is done
+    if Logger.level() == :info do
+      {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
+       :res3, res3, :rcode, rcode} = parse_header_flags(raw_flags)
 
-    <<id::unsigned-integer-size(16), raw_flags::bits-size(16), qdcount::unsigned-integer-size(16),
-      ancount::unsigned-integer-size(16), nscount::unsigned-integer-size(16),
-      arcount::unsigned-integer-size(16)>> = raw_header
+      Logger.info(
+        "handle_info id: #{id}, flags: #{
+          inspect(
+            {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2,
+             res2, :res3, res3, :rcode, rcode}
+          )
+        }, qdc: #{qdcount}, anc: #{ancount}, nsc: #{nscount}, arc: #{arcount}"
+      )
+    end
 
-    {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
-     :res3, res3, :rcode, rcode} = parse_header_flags(raw_flags)
-
-    Logger.info(
-      "handle_info id: #{id}, flags: #{
-        inspect(
-          {:qr, qr, :opcode, opcode, :aa, aa, :tc, tc, :rd, rd, :ra, ra, :res1, res1, :res2, res2,
-           :res3, res3, :rcode, rcode}
-        )
-      }, qdc: #{qdcount}, anc: #{ancount}, nsc: #{nscount}, arc: #{arcount}"
-    )
-
-    {:raw_question, raw_question, :parsed, {:qname, qname, :qtype, qtype, :qclass, qclass}} =
-      parse_dns_question(rest)
+    {:raw_question, raw_question, :parsed_question,
+     {:qname, qname, :qtype, qtype, :qclass, qclass}, :rest,
+     raw_additional} = parse_dns_question(rest)
 
     Logger.info("handle_info #{inspect({:qname, qname, :qtype, qtype, :qclass, qclass})}")
+
+    {:ok, _miez} = parse_dns_additional(raw_additional)
 
     response =
       create_reponse_header(id) <>
@@ -82,19 +84,25 @@ defmodule Dnscache.Server do
     {:noreply, state}
   end
 
+  defp parse_dns_additional(bin) do
+    Logger.info("parse_dns_additional #{inspect(bin)}")
+    {:ok, :ok}
+  end
+
   defp parse_dns_question(bin) do
     [qname_raw, rest] = :binary.split(bin, <<0::8, 0::8>>)
 
     qname = for <<len, name::binary-size(len) <- qname_raw>>, do: name
 
-    <<qtype0::8, qtype1::8, qclass0::8, qclass1::8, _rest::bits>> = rest
+    <<qtype0::8, qtype1::8, qclass0::8, qclass1::8, rest::bits>> = rest
 
     {:ok, qtype} = qtype_to_string({qtype0, qtype1})
     {:ok, qclass} = qclass_to_string({qclass0, qclass1})
 
     raw_question = qname_raw <> <<0::8, 0::8>> <> <<qtype0::8, qtype1::8, qclass0::8, qclass1::8>>
 
-    {:raw_question, raw_question, :parsed, {:qname, qname, :qtype, qtype, :qclass, qclass}}
+    {:raw_question, raw_question, :parsed_question,
+     {:qname, qname, :qtype, qtype, :qclass, qclass}, :rest, rest}
   end
 
   defp generate_dns_question(question) do
@@ -113,18 +121,31 @@ defmodule Dnscache.Server do
   end
 
   defp create_reponse_header(id) do
-    <<id::16, 1::1, 0::4, 0::1, 0::1, 0::1, 0::1, 0::3, 0::4, 1::16, 1::16, 0::16, 0::16>>
+    qr = 1
+    opcode = 0
+    aa = 0
+    tc = 0
+    rd = 1
+    ra = 1
+    rcode = 0
+    qdcount = 1
+    ancount = 1
+    nscount = 0
+    arcount = 1
+
+    <<id::16, qr::1, opcode::4, aa::1, tc::1, rd::1, ra::1, 0::3, rcode::4, qdcount::16,
+      ancount::16, nscount::16, arcount::16>>
   end
 
   defp create_response_answer(raw_question, qtype, qclass) do
-    Logger.info("#{inspect({raw_question, qtype, qclass})}")
+    Logger.info("create_response_answer #{inspect({raw_question, qtype, qclass})}")
     {:ok, {qt0, qt1}} = string_to_qtype(qtype)
     {:ok, {qc0, qc1}} = string_to_qclass(qclass)
 
     raw_question <>
       <<qt0::8>> <>
       <<qt1::8>> <>
-      <<qc0::8>> <> <<qc1::8>> <> <<60::32>> <> <<4::16>> <> <<127, 0, 0, 1>>
+      <<qc0::8>> <> <<qc1::8>> <> <<60::32>> <> <<4::16>> <> <<127::8, 0::8, 0::8, 1::88>>
   end
 
   defp qtype_to_string(qtype) do
