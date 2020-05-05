@@ -43,53 +43,52 @@ defmodule Dnscache.Server do
           socket,
           source_ip,
           source_port,
-          <<header_raw_id::unsigned-integer-size(16), header_raw_flags::bits-size(16),
-            header_raw_qdcount::unsigned-integer-size(16),
-            header_raw_ancount::unsigned-integer-size(16),
-            header_raw_nscount::unsigned-integer-size(16),
-            header_raw_arcount::unsigned-integer-size(16), dns_raw_rest::bits>>
+          <<query_header_id_raw::unsigned-integer-size(16), query_header_flags_raw::bits-size(16),
+            query_header_qdcount_raw::unsigned-integer-size(16),
+            query_header_ancount_raw::unsigned-integer-size(16),
+            query_header_nscount_raw::unsigned-integer-size(16),
+            query_header_arcount_raw::unsigned-integer-size(16), query_rest_raw::bits>>
         },
         state
       ) do
     Logger.info(
       "handle_info #{
         inspect(
-          {:header_raw_id, header_raw_id, :header_raw_flags, header_raw_flags,
-           :header_raw_qdcount, header_raw_qdcount, :header_raw_ancount, header_raw_ancount,
-           :header_raw_nscount, header_raw_nscount, :header_raw_arcount, header_raw_arcount,
-           :dns_raw_rest, dns_raw_rest}
+          {:query_header_id_raw, query_header_id_raw, :query_header_flags_raw,
+           query_header_flags_raw, query_header_qdcount_raw, query_header_qdcount_raw,
+           :query_header_ancount_raw, query_header_ancount_raw, :query_header_nscount_raw,
+           query_header_nscount_raw, :query_header_arcount_raw, query_header_arcount_raw,
+           :query_rest_raw, query_rest_raw}
         )
       }"
     )
 
-    Logger.info("parse_header_flags: #{inspect(parse_header_flags(header_raw_flags))}")
+    Logger.info("parse_header_flags: #{inspect(parse_header_flags(query_header_flags_raw))}")
 
-    {:question_raw_qname, question_raw_qname, :question_raw_qtype, question_raw_qtype,
-     :question_raw_qclass, question_raw_qclass, :question_parsed,
-     {question_parsed_qname, question_parsed_qtype, question_parsed_qclass}, :rest,
-     dns_raw_rest_after_question} = parse_dns_question(dns_raw_rest)
+    {:question_qname_raw, question_qname_raw, :question_qtype_int, question_qtype_int,
+     :question_qclass_int, question_qclass_int, :question_parsed,
+     {question_qname_parsed, question_qtype_string, question_qclass_string}, :rest,
+     query_rest_raw_after_question} = parse_dns_question(query_rest_raw)
 
-    for <<x::bits-size(8) <- question_raw_qname>>, do: Logger.info("#{inspect(x)}")
-
-    for <<x::bits-size(8) <- question_raw_qtype>>, do: Logger.info("#{inspect(x)}")
-
-    for <<x::bits-size(8) <- question_raw_qclass>>, do: Logger.info("#{inspect(x)}")
+    for <<x::bits-size(8) <- question_qname_raw>>, do: Logger.info("#{inspect(x)}")
 
     Logger.info(
       "handle_info #{
         inspect(
-          {:qname, question_parsed_qname, :qtype, question_parsed_qtype, :qclass,
-           question_parsed_qclass}
+          {:qname, question_qname_parsed, :qtype, question_qtype_string, :qclass,
+           question_qclass_string}
         )
       }"
     )
 
-    if header_raw_arcount == 1 do
-      {:ok, :ok} = parse_dns_additional(dns_raw_rest_after_question)
-      for <<x::bits-size(8) <- dns_raw_rest_after_question>>, do: Logger.info("#{inspect(x)}")
+    if query_header_arcount_raw == 1 do
+      {:ok, :ok} = parse_dns_additional(query_rest_raw_after_question)
+      for <<x::bits-size(8) <- query_rest_raw_after_question>>, do: Logger.info("#{inspect(x)}")
     end
 
-    :gen_udp.send(socket, source_ip, source_port, <<0::32>>)
+    create_reponse_header(query_header_id_raw)
+
+    :gen_udp.send(socket, source_ip, source_port, create_reponse_header(query_header_id_raw))
     {:noreply, state}
   end
 
@@ -120,21 +119,24 @@ defmodule Dnscache.Server do
     {:ok, :ok}
   end
 
-  defp parse_dns_question(dns_raw_rest) do
-    [question_raw_qname, rest] = :binary.split(dns_raw_rest, <<0::8, 0::8>>)
-    Logger.info("#{inspect(question_raw_qname)} : #{inspect(rest)}")
-    <<qtype0::8, qtype1::8, qclass0::8, qclass1::8, remaining::bits>> = rest
+  defp parse_dns_question(query_rest_raw) do
+    [question_qname_raw, rest] = :binary.split(query_rest_raw, <<0::8>>)
+    Logger.info("#{inspect(question_qname_raw)} : #{inspect(rest)}")
+    <<question_qtype_int::16, question_qclass_int::16, remaining::bits>> = rest
 
-    question_parsed_qname = for <<len, name::binary-size(len) <- question_raw_qname>>, do: name
-    question_parsed_qtype = qtype_to_string({qtype0, qtype1})
-    question_parsed_qclass = qclass_to_string({qclass0, qclass1})
+    question_qname_parsed = for <<len, name::binary-size(len) <- question_qname_raw>>, do: name
+    question_qtype_string = qtype_to_string(question_qtype_int)
+    question_qclass_string = qclass_to_string(question_qclass_int)
 
-    question_raw_qtype = <<qtype0>> <> <<qtype1>>
-    question_raw_qclass = <<qclass0>> <> <<qclass1>>
+    return = {:question_qname_raw, question_qname_raw, :question_qtype_int, question_qtype_int,
+    :question_qclass_int, question_qclass_int, :question_parsed,
+    {question_qname_parsed, question_qtype_string, question_qclass_string}, :rest, remaining}
 
-    {:question_raw_qname, question_raw_qname, :question_raw_qtype, question_raw_qtype,
-     :question_raw_qclass, question_raw_qclass, :question_parsed,
-     {question_parsed_qname, question_parsed_qtype, question_parsed_qclass}, :rest, remaining}
+    Logger.info("#{inspect(return)}")
+
+    {:question_qname_raw, question_qname_raw, :question_qtype_int, question_qtype_int,
+     :question_qclass_int, question_qclass_int, :question_parsed,
+     {question_qname_parsed, question_qtype_string, question_qclass_string}, :rest, remaining}
   end
 
   defp generate_dns_question(question) do
@@ -175,45 +177,45 @@ defmodule Dnscache.Server do
 
   defp qtype_to_string(qtype) do
     case qtype do
-      {1, 0} -> {:ok, 'A'}
-      {2, 0} -> {:ok, 'NS'}
-      {5, 0} -> {:ok, 'CNAME'}
-      {6, 0} -> {:ok, 'SOA'}
-      {12, 0} -> {:ok, 'PTR'}
-      {15, 0} -> {:ok, 'MX'}
-      {28, 0} -> {:ok, 'AAAA'}
-      {33, 0} -> {:ok, 'SRV'}
-      {255, 0} -> {:ok, 'ANY'}
+      1 -> {:ok, 'A'}
+      2 -> {:ok, 'NS'}
+      5 -> {:ok, 'CNAME'}
+      6 -> {:ok, 'SOA'}
+      12 -> {:ok, 'PTR'}
+      15 -> {:ok, 'MX'}
+      28 -> {:ok, 'AAAA'}
+      33 -> {:ok, 'SRV'}
+      255 -> {:ok, 'ANY'}
       _ -> {:error, 'NONE'}
     end
   end
 
   defp string_to_qtype(qtype) do
     case qtype do
-      'A' -> {:ok, {1, 0}}
-      'NS' -> {:ok, {2, 0}}
-      'CNAME' -> {:ok, {5, 0}}
-      'SOA' -> {:ok, {6, 0}}
-      'PTR' -> {:ok, {12, 0}}
-      'MX' -> {:ok, {15, 0}}
-      'AAAA' -> {:ok, {28, 0}}
-      'SRV' -> {:ok, {33, 0}}
-      'ANY' -> {:ok, {255, 0}}
-      _ -> {:error, {0, 0}}
+      'A' -> {:ok, 1}
+      'NS' -> {:ok, 2}
+      'CNAME' -> {:ok, 5}
+      'SOA' -> {:ok, 6}
+      'PTR' -> {:ok, 12}
+      'MX' -> {:ok, 15}
+      'AAAA' -> {:ok, 28}
+      'SRV' -> {:ok, 33}
+      'ANY' -> {:ok, 255}
+      _ -> {:error, :notfound}
     end
   end
 
   defp qclass_to_string(qclass) do
     case qclass do
-      {1, 0} -> {:ok, 'IN'}
+      1 -> {:ok, 'IN'}
       _ -> {:error, 'NONE'}
     end
   end
 
   defp string_to_qclass(qclass) do
     case qclass do
-      'IN' -> {:ok, {1, 0}}
-      _ -> {:error, {0, 0}}
+      'IN' -> {:ok, 1}
+      _ -> {:error, {0}}
     end
   end
 
