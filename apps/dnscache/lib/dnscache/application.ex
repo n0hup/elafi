@@ -1,10 +1,9 @@
 defmodule Dnscache.Application do
-
   use Application
 
   def start(_type, _args) do
     children = [
-    	{Dnscache.Server, []}
+      {Dnscache.Server, []}
     ]
 
     opts = [strategy: :one_for_one, name: Dnscache.Supervisor]

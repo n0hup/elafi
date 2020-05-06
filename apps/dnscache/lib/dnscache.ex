@@ -1,4 +1,2 @@
 defmodule Dnscache do
-
-
 end

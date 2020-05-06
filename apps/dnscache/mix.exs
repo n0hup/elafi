@@ -10,8 +10,8 @@ defmodule Dnscache.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.7",
-      start_permanent: Mix.env == :prod,
-      build_embedded: Mix.env == :prod,
+      start_permanent: Mix.env() == :prod,
+      build_embedded: Mix.env() == :prod,
       deps: deps()
     ]
   end
@@ -25,7 +25,7 @@ defmodule Dnscache.MixProject do
 
   defp deps do
     [
-			{:dns_erlang, ">= 1.1.0"}
+      {:dns_erlang, ">= 1.1.0"}
     ]
   end
 end

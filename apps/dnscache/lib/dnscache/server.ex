@@ -8,12 +8,18 @@ defmodule Dnscache.Server do
   def start_link(args) do
     Logger.info("Dnscache.Server is starting")
     Logger.info("Dnscache.Server.start_link, args: #{inspect(args)}")
+
     udp_ip = Application.get_env(:dnscache, :udp_ip_listen, {127, 0, 0, 1})
     udp_port = Application.get_env(:dnscache, :udp_port_listen, 5355)
+
+    upstream_dns_server_ip =
+      Application.get_env(:dnscache, :upstream_dns_server_ip, {192, 168, 1, 105})
+
+    upstream_dns_server_port = Application.get_env(:dnscache, :upstream_dns_server_port, 5335)
     GenServer.start_link(__MODULE__, [udp_ip, udp_port], name: Dnscache.Server)
   end
 
-  def init([udp_ip, udp_port]) do
+  def init([udp_ip, udp_port, upstream_dns_server_ip, upstream_dns_server_port]) do
     Logger.info("Dnscache.Server.init, args: #{inspect([udp_ip, udp_port])}")
 
     case Mnesia.create_schema([node()]) do
@@ -45,7 +51,15 @@ defmodule Dnscache.Server do
               "Client UDP socket was succssfully opened, socket: #{inspect(client_socket)}"
             )
 
-            {:ok, %{ip: udp_ip, port: udp_port, socket: udp_socket, client_socket: client_socket}}
+            {:ok,
+             %{
+               ip: udp_ip,
+               port: udp_port,
+               socket: udp_socket,
+               client_socket: client_socket,
+               upstream_dns_server_ip: upstream_dns_server_ip,
+               upstream_dns_server_port: upstream_dns_server_port
+             }}
 
           {:error, reason} ->
             Logger.error("Client UDP socket could not be opened, error: #{inspect(reason)}")
