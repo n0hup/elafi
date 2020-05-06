@@ -21,3 +21,7 @@ erl_crash.dump
 
 mix.lock
 .elixir_ls/
+
+elafidb_dev/
+elafidb_test/
+elafidb_prod/
