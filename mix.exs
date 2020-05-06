@@ -7,7 +7,12 @@ defmodule Elafi.MixProject do
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      releases: [
+        elafi: [
+          applications: [dnscache: :permanent]
+        ]
+      ]
     ]
   end
 
