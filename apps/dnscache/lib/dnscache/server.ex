@@ -1,6 +1,8 @@
 defmodule Dnscache.Server do
   use GenServer
   require Logger
+  alias :mnesia, as: Mnesia
+  alias :gen_udp, as: GenUdp
 
   @spec start_link(any) :: :ignore | {:error, any} | {:ok, pid}
   def start_link(args) do
@@ -14,11 +16,41 @@ defmodule Dnscache.Server do
   def init([udp_ip, udp_port]) do
     Logger.info("Dnscache.Server.init, args: #{inspect([udp_ip, udp_port])}")
 
+    case Mnesia.create_schema([node()]) do
+      :ok ->
+        Logger.info("Created Mnesia folder")
+
+      {:error, {_node0, {:already_exists, _node1}}} ->
+        Logger.info("Mnesia folder was previously created")
+
+      {:error, reason} ->
+        Logger.error("Mnesia folder creation error #{inspect(reason)}")
+    end
+
+    case Mnesia.start() do
+      :ok ->
+        Logger.info("Mnesia is started")
+
+      {:error, reason} ->
+        Logger.info("Mnesia could not be started #{inspect(reason)}")
+    end
+
     case :gen_udp.open(udp_port, [:binary, {:active, true}, {:ip, udp_ip}]) do
       {:ok, udp_socket} ->
         Logger.info("Started listener on #{ip_to_string(udp_ip)} : #{udp_port}")
-        {:ok, client_socket} = :gen_udp.open(0, [:binary, {:active, false}])
-        {:ok, %{ip: udp_ip, port: udp_port, socket: udp_socket, client_socket: client_socket}}
+
+        case GenUdp.open(0, [:binary, {:active, false}]) do
+          {:ok, client_socket} ->
+            Logger.info(
+              "Client UDP socket was succssfully opened, socket: #{inspect(client_socket)}"
+            )
+
+            {:ok, %{ip: udp_ip, port: udp_port, socket: udp_socket, client_socket: client_socket}}
+
+          {:error, reason} ->
+            Logger.error("Client UDP socket could not be opened, error: #{inspect(reason)}")
+            {:ok, "Client UDP socket error"}
+        end
 
       {:error, :eacces} ->
         Logger.error(
@@ -54,16 +86,15 @@ defmodule Dnscache.Server do
       query_header_nscount_raw::unsigned-integer-size(16),
       query_header_arcount_raw::unsigned-integer-size(16), query_rest_raw::bits>> = dns_query_raw
 
-      Logger.info("State: #{inspect(state)}")
+    Logger.info("State: #{inspect(state)}")
     Logger.info("#{inspect(dns_query_raw)}")
 
-    {:ok, client_socket} = :gen_udp.open(0, [:binary, {:active, false}])
-    :gen_udp.send(client_socket, {1, 1, 1, 1}, 53, dns_query_raw)
+    :gen_udp.send(state[:client_socket], {1, 1, 1, 1}, 53, dns_query_raw)
 
     # This can be :ok or :error - needs a strategy of retry
-    {:ok, {_ip, _port, resp}} = :gen_udp.recv(client_socket, 0, 5_000)
-    # {:error, :timeout}
+    {:ok, {_ip, _port, resp}} = :gen_udp.recv(state[:client_socket], 0, 5_000)
 
+    # {:error, :timeout}
 
     Logger.info("#{inspect(resp)}")
 
