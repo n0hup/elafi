@@ -16,7 +16,7 @@ defmodule Dnscache.Server do
       Application.get_env(:dnscache, :upstream_dns_server_ip, {192, 168, 1, 105})
 
     upstream_dns_server_port = Application.get_env(:dnscache, :upstream_dns_server_port, 5335)
-    GenServer.start_link(__MODULE__, [udp_ip, udp_port], name: Dnscache.Server)
+    GenServer.start_link(__MODULE__, [udp_ip, udp_port, upstream_dns_server_ip, upstream_dns_server_port], name: Dnscache.Server)
   end
 
   def init([udp_ip, udp_port, upstream_dns_server_ip, upstream_dns_server_port]) do
