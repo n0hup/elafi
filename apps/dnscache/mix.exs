@@ -18,14 +18,14 @@ defmodule Dnscache.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :mnesia],
       mod: {Dnscache.Application, []}
     ]
   end
 
   defp deps do
     [
-      {:dns_erlang, ">= 1.1.0"}
+
     ]
   end
 end

@@ -18,7 +18,6 @@ defmodule Elafi.MixProject do
 
   defp deps do
     [
-      {:esqlite, "~> 0.4.1"},
       {:elli, "~> 3.2"}
     ]
   end
