@@ -107,7 +107,7 @@ defmodule Dnscache.Server do
     {qname, qtype, qclass} = dns_query_parsed[:question]
     name = Enum.join(qname, ".")
     Logger.info("#{inspect(dns_query_parsed)}")
-    Logger.info("source ip: #{source_ip} #{name} #{qtype} #{qclass}")
+    Logger.info("source ip: #{ip_to_string(source_ip)} #{name} #{qtype} #{qclass}")
 
     #
     ## UPSTREAM
