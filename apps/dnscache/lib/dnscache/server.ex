@@ -97,7 +97,7 @@ defmodule Dnscache.Server do
       when byte_size(dns_query_raw) < 513 do
     {:ok, :ok} = parse_query(dns_query_raw)
 
-    :gen_udp.send(state[:client_socket], {1, 1, 1, 1}, 53, dns_query_raw)
+    :gen_udp.send(state[:client_socket], state[:upstream_dns_server_ip], state[:upstream_dns_server_port], dns_query_raw)
 
     # This can be :ok or :error - needs a strategy of retry
     {:ok, {_ip, _port, resp}} = :gen_udp.recv(state[:client_socket], 0, 5_000)
@@ -126,7 +126,7 @@ defmodule Dnscache.Server do
       ) do
     Logger.error("Received DNS packet (catch_all) #{inspect(catch_all)}")
 
-    :gen_udp.send(socket, source_ip, source_port, catch_all)
+    :gen_udp.send(socket, source_ip, source_port, <<0::8>>)
     {:noreply, state}
   end
 
