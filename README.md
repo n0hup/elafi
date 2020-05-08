@@ -5,7 +5,7 @@ https://en.wiktionary.org/wiki/ελάφι#Greek
 ## Apps
 
 - dnsauth: authoritative nameserver, for lan
-- dnscache: recursive resolver
+- dnscache: dns proxy and recursive resolver
 - shades: blacklist/whitelist
 - webui: settings & monitoring
 
@@ -20,13 +20,31 @@ I try to not to use any dependecies. Esqlite is a NIF based library. It might be
 ```Elixir
   defp deps do
     [
-      {:esqlite, "~> 0.4.1"},
       {:elli, "~> 3.2"}
     ]
   end
 ```
 
 ### DNS
+
+This is the current flow of incoming DNS packets:
+
+```mermaid
+graph TD
+A[UDP Packet] --> B(< 513)
+B(< 513) -->|Y| C(Whitelist?)
+B(< 513) -->|N| D[Error]
+C(Whitelist?) -->|Y| E(Local?)
+C(Whitelist?) -->|N| F(Blacklist?)
+F(Blacklist?) --> |Y| G[0.0.0.0]
+F(Blacklist?) --> |N| E(Local?)
+E(Local?) -->|Y| H[Local Authoritative]
+E(Local?) -->|N| I(Forward)
+I(Forward) -->|Y| J[Forward Query To Upstream]
+J[Forward Query To Upstream] --> K[Send Response to Requester]
+```
+
+[Link](https://mermaid-js.github.io/mermaid-live-editor/#/edit/eyJjb2RlIjoiZ3JhcGggVERcbkFbVURQIFBhY2tldF0gLS0-IEIoPCA1MTMpXG5CKDwgNTEzKSAtLT58WXwgQyhXaGl0ZWxpc3Q_KVxuQig8IDUxMykgLS0-fE58IERbRXJyb3JdXG5DKFdoaXRlbGlzdD8pIC0tPnxZfCBFKExvY2FsPylcbkMoV2hpdGVsaXN0PykgLS0-fE58IEYoQmxhY2tsaXN0PylcbkYoQmxhY2tsaXN0PykgLS0-IHxZfCBHWzAuMC4wLjBdXG5GKEJsYWNrbGlzdD8pIC0tPiB8TnwgRShMb2NhbD8pXG5FKExvY2FsPykgLS0-fFl8IEhbTG9jYWwgQXV0aG9yaXRhdGl2ZV1cbkUoTG9jYWw_KSAtLT58TnwgSShGb3J3YXJkKVxuSShGb3J3YXJkKSAtLT58WXwgSltGb3J3YXJkIFF1ZXJ5IFRvIFVwc3RyZWFtXVxuSltGb3J3YXJkIFF1ZXJ5IFRvIFVwc3RyZWFtXSAtLT4gS1tTZW5kIFJlc3BvbnNlIHRvIFJlcXVlc3Rlcl1cbiIsIm1lcm1haWQiOnsidGhlbWUiOiJkZWZhdWx0In0sInVwZGF0ZUVkaXRvciI6ZmFsc2V9)
 
 #### Message Format
 
