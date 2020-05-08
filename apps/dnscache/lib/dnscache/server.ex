@@ -163,6 +163,19 @@ defmodule Dnscache.Server do
       {:ok, {_ip, _port, dns_response_raw}} ->
         Logger.debug("#{inspect(dns_response_raw)}")
 
+        case :gen_udp.send(
+               socket,
+               source_ip,
+               source_port,
+               dns_response_raw
+             ) do
+          :ok ->
+            Logger.debug("Response sent sucessfully to client")
+
+          {:error, reason} ->
+            Logger.error("Response could not be sent to client! Reason: #{inspect(reason)}")
+        end
+
       {:error, reason} ->
         Logger.error("#{inspect(reason)}")
     end
@@ -296,6 +309,7 @@ defmodule Dnscache.Server do
     if retry > 0 do
       Logger.info("Retrying packet: #{inspect(packet)} retry: #{retry}")
     end
+
     case :gen_udp.send(
            socket,
            remote_ip,
