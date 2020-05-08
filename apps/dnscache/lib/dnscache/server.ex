@@ -126,8 +126,8 @@ defmodule Dnscache.Server do
     {:question_qname_string, question_qname_string, :question_qtype_int, question_qtype_int,
      :question_qclass_int, question_qclass_int, :rest, query_rest_after_question} = query_question
 
-    question_qtype_string = qtype_to_string(question_qtype_int)
-    question_qclass_string = qclass_to_string(question_qclass_int)
+    {_, question_qtype_string} = qtype_to_string(question_qtype_int)
+    {_, question_qclass_string} = qclass_to_string(question_qclass_int)
 
     Logger.info(
       "source ip: #{ip_to_string(source_ip)} header_id #{header_id_int} #{question_qname_string} #{
