@@ -293,6 +293,9 @@ defmodule Dnscache.Server do
   # I do not think this is safe like that
   # I have to match the send and recv packets based on the DNS header id
   defp send_and_receive(socket, remote_ip, remote_port, packet, retry) do
+    if retry > 0 do
+      Logger.info("Retrying packet: #{inspect(packet)} retry: #{retry}")
+    end
     case :gen_udp.send(
            socket,
            remote_ip,
