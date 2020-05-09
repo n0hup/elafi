@@ -15,7 +15,7 @@ defmodule Dataz.Server do
     )
   end
 
-  def init() do
+  def init([]) do
     Logger.info("Dataz.Server.init, args: #{inspect([])}")
 
     case Mnesia.create_schema([node()]) do
@@ -35,6 +35,29 @@ defmodule Dataz.Server do
 
       {:error, reason} ->
         Logger.info("Mnesia could not be started #{inspect(reason)}")
+    end
+
+    # creating a table where an
+    # id -> gateway.fe.apple-dns.net_A
+    # ttl -> 60
+    # value -> <<raw_dns_answer>>
+
+    case Mnesia.create_table(Cache, attributes: [:id, :ttl, :value]) do
+      {:atomic, :ok} ->
+        Logger.info("Table Cache has been created")
+        {:ok, :ok}
+
+      {:aborted, {:already_exists, Cache}} ->
+        Logger.info("Table Cache has been previously created")
+
+        case Mnesia.table_info(Cache, :attributes) do
+          [:id, :ttl, :value] ->
+            Mnesia.wait_for_tables([Cache], 5000)
+            {:ok, :ok}
+
+          other ->
+            {:error, other}
+        end
     end
 
     {:ok, %{}}

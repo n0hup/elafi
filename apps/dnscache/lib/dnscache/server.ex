@@ -2,6 +2,8 @@ defmodule Dnscache.Server do
   use GenServer
   require Logger
   alias :gen_udp, as: GenUdp
+  alias :erlang, as: Erlang
+  alias :timer, as: Timer
 
   @spec start_link(any) :: :ignore | {:error, any} | {:ok, pid}
   def start_link(args) do
@@ -158,7 +160,7 @@ defmodule Dnscache.Server do
     #
     ## UPSTREAM
     #
-    start_time = :erlang.timestamp()
+    start_time = Erlang.timestamp()
 
     case send_and_receive(
            state[:udp_client_socket],
@@ -187,8 +189,8 @@ defmodule Dnscache.Server do
         Logger.error("#{inspect(reason)}")
     end
 
-    end_time = :erlang.timestamp()
-    time_spent = :timer.now_diff(end_time, start_time)
+    end_time = Erlang.timestamp()
+    time_spent = round(Timer.now_diff(end_time, start_time) / 1_000)
     Logger.info("Processing request took: #{inspect(time_spent)} ms")
     {:noreply, state}
   end
