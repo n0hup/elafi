@@ -1,0 +1,2 @@
+defmodule Dataz do
+end

@@ -1,7 +1,6 @@
 defmodule Dnscache.Server do
   use GenServer
   require Logger
-  alias :mnesia, as: Mnesia
   alias :gen_udp, as: GenUdp
 
   @spec start_link(any) :: :ignore | {:error, any} | {:ok, pid}
@@ -9,8 +8,8 @@ defmodule Dnscache.Server do
     Logger.info("Dnscache.Server is starting")
     Logger.info("Dnscache.Server.start_link, args: #{inspect(args)}")
 
-    udp_ip = Application.get_env(:dnscache, :udp_ip_listen, {127, 0, 0, 1})
-    udp_port = Application.get_env(:dnscache, :udp_port_listen, 5355)
+    udp_ip_listen = Application.get_env(:dnscache, :udp_ip_listen, {127, 0, 0, 1})
+    udp_port_listen = Application.get_env(:dnscache, :udp_port_listen, 5355)
 
     upstream_dns_server_ip =
       Application.get_env(:dnscache, :upstream_dns_server_ip, {192, 168, 1, 105})
@@ -19,49 +18,44 @@ defmodule Dnscache.Server do
 
     GenServer.start_link(
       __MODULE__,
-      [udp_ip, udp_port, upstream_dns_server_ip, upstream_dns_server_port],
+      [udp_ip_listen, udp_port_listen, upstream_dns_server_ip, upstream_dns_server_port],
       name: Dnscache.Server
     )
   end
 
-  def init([udp_ip, udp_port, upstream_dns_server_ip, upstream_dns_server_port]) do
-    Logger.info("Dnscache.Server.init, args: #{inspect([udp_ip, udp_port])}")
+  def init([udp_ip_listen, udp_port_listen, upstream_dns_server_ip, upstream_dns_server_port]) do
+    Logger.info(
+      "Dnscache.Server.init, args: #{
+        inspect([udp_ip_listen, udp_port_listen, upstream_dns_server_ip, upstream_dns_server_port])
+      }"
+    )
 
-    case Mnesia.create_schema([node()]) do
-      :ok ->
-        Logger.info("Created Mnesia folder")
+    # Starts up the DNS server listener on the specified IP + PORT
+    case GenUdp.open(udp_port_listen, [:binary, {:active, true}, {:ip, udp_ip_listen}]) do
+      {:ok, udp_server_socket} ->
+        Logger.info(
+          "Started listener on #{ip_to_string(udp_ip_listen)} : #{udp_port_listen} : #{
+            inspect(udp_server_socket)
+          }"
+        )
 
-      {:error, {_node0, {:already_exists, _node1}}} ->
-        Logger.info("Mnesia folder was previously created")
-
-      {:error, reason} ->
-        Logger.error("Mnesia folder creation error #{inspect(reason)}")
-    end
-
-    case Mnesia.start() do
-      :ok ->
-        Logger.info("Mnesia is started")
-
-      {:error, reason} ->
-        Logger.info("Mnesia could not be started #{inspect(reason)}")
-    end
-
-    case :gen_udp.open(udp_port, [:binary, {:active, true}, {:ip, udp_ip}]) do
-      {:ok, udp_socket} ->
-        Logger.info("Started listener on #{ip_to_string(udp_ip)} : #{udp_port}")
-
+        # Creates a local UPD port that is used to send the queries to the upstream server
+        # We might need more of these are round robin the incoming requests
         case GenUdp.open(0, [:binary, {:active, false}]) do
-          {:ok, client_socket} ->
+          {:ok, udp_client_socket} ->
             Logger.info(
-              "Client UDP socket was succssfully opened, socket: #{inspect(client_socket)}"
+              "Client UDP socket was succssfully opened, socket: #{inspect(udp_client_socket)}"
             )
 
             {:ok,
              %{
-               ip: udp_ip,
-               port: udp_port,
-               socket: udp_socket,
-               client_socket: client_socket,
+               # Server
+               udp_ip_listen: udp_ip_listen,
+               udp_port_listen: udp_port_listen,
+               udp_server_socket: udp_server_socket,
+               # Client
+               udp_client_socket: udp_client_socket,
+               # Upstream
                upstream_dns_server_ip: upstream_dns_server_ip,
                upstream_dns_server_port: upstream_dns_server_port
              }}
@@ -73,14 +67,14 @@ defmodule Dnscache.Server do
 
       {:error, :eacces} ->
         Logger.error(
-          "Could NOT start listener on #{ip_to_string(udp_ip)} : #{udp_port}, reason:  Permission denied"
+          "Could NOT start listener on #{ip_to_string(udp_ip_listen)} : #{udp_port_listen}, reason:  Permission denied"
         )
 
         {:error, "Permission denied"}
 
       {:error, reason} ->
         Logger.error(
-          "Could NOT start listener on #{ip_to_string(udp_ip)} : #{udp_port}, reason: #{
+          "Could NOT start listener on #{ip_to_string(udp_ip_listen)} : #{udp_port_listen}, reason: #{
             inspect(reason)
           }"
         )
@@ -92,7 +86,7 @@ defmodule Dnscache.Server do
   def handle_info(
         {
           :udp,
-          socket,
+          udp_server_socket,
           source_ip,
           source_port,
           dns_query_raw
@@ -100,6 +94,18 @@ defmodule Dnscache.Server do
         state
       )
       when byte_size(dns_query_raw) < 513 do
+    Logger.debug(
+      "#{
+        inspect({
+          :udp,
+          udp_server_socket,
+          source_ip,
+          source_port,
+          dns_query_raw
+        })
+      }"
+    )
+
     #
     ### QUERY
     #
@@ -154,7 +160,7 @@ defmodule Dnscache.Server do
     #
 
     case send_and_receive(
-           state[:client_socket],
+           state[:udp_client_socket],
            state[:upstream_dns_server_ip],
            state[:upstream_dns_server_port],
            dns_query_raw,
@@ -163,8 +169,8 @@ defmodule Dnscache.Server do
       {:ok, {_ip, _port, dns_response_raw}} ->
         Logger.debug("#{inspect(dns_response_raw)}")
 
-        case :gen_udp.send(
-               socket,
+        case GenUdp.send(
+               udp_server_socket,
                source_ip,
                source_port,
                dns_response_raw
@@ -198,7 +204,7 @@ defmodule Dnscache.Server do
       ) do
     Logger.error("Received DNS packet (catch_all) #{inspect(catch_all)}")
 
-    :gen_udp.send(socket, source_ip, source_port, <<0::8>>)
+    GenUdp.send(socket, source_ip, source_port, <<0::8>>)
     {:noreply, state}
   end
 
@@ -310,7 +316,7 @@ defmodule Dnscache.Server do
       Logger.info("Retrying packet: #{inspect(packet)} retry: #{retry}")
     end
 
-    case :gen_udp.send(
+    case GenUdp.send(
            socket,
            remote_ip,
            remote_port,
@@ -319,7 +325,7 @@ defmodule Dnscache.Server do
       :ok ->
         Logger.debug("Successfully sent UDP request")
 
-        case :gen_udp.recv(socket, 0, 1_500) do
+        case GenUdp.recv(socket, 0, 5_000) do
           {:ok, {ip, port, response}} ->
             Logger.debug("Successfully received UDP reponse")
             {:ok, {ip, port, response}}

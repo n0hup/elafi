@@ -10,15 +10,13 @@ defmodule Elafi.MixProject do
       deps: deps(),
       releases: [
         elafi: [
-          applications: [dnscache: :permanent]
+          applications: [dnscache: :permanent, webui: :permanent, dataz: :permanent]
         ]
       ]
     ]
   end
 
   defp deps do
-    [
-      {:elli, "~> 3.2"}
-    ]
+    []
   end
 end
