@@ -146,9 +146,9 @@ defmodule Dnscache.Server do
     #
 
     if header_arcount_int == 1 do
-      Logger.debug(query_rest_after_question)
+      Logger.debug("query_rest_after_question: #{inspect(query_rest_after_question)}")
       {_, ret} = parse_additional(query_rest_after_question)
-      Logger.info("#{inspect(ret)}")
+      Logger.info("ret: #{inspect(ret)}")
     end
 
     ##
@@ -158,6 +158,7 @@ defmodule Dnscache.Server do
     #
     ## UPSTREAM
     #
+    start_time = :erlang.timestamp()
 
     case send_and_receive(
            state[:udp_client_socket],
@@ -186,6 +187,9 @@ defmodule Dnscache.Server do
         Logger.error("#{inspect(reason)}")
     end
 
+    end_time = :erlang.timestamp()
+    time_spent = :timer.now_diff(end_time, start_time)
+    Logger.info("Processing request took: #{inspect(time_spent)} ms")
     {:noreply, state}
   end
 
