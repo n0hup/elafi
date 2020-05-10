@@ -89,8 +89,8 @@ defmodule Dnscache.Server do
         {
           :udp,
           udp_server_socket,
-          source_ip,
-          source_port,
+          dns_query_source_ip,
+          dns_query_source_port,
           dns_query_raw
         },
         state
@@ -101,8 +101,8 @@ defmodule Dnscache.Server do
         inspect({
           :udp,
           udp_server_socket,
-          source_ip,
-          source_port,
+          dns_query_source_ip,
+          dns_query_source_port,
           dns_query_raw
         })
       }"
@@ -137,11 +137,14 @@ defmodule Dnscache.Server do
     {_, question_qtype_string} = qtype_to_string(question_qtype_int)
     {_, question_qclass_string} = qclass_to_string(question_qclass_int)
 
-    Logger.info(
-      "source ip: #{ip_to_string(source_ip)} header_id #{header_id_int} #{question_qname_string} #{
-        question_qtype_string
-      } #{question_qclass_string}"
-    )
+    #     55> erlang:port_info(S).
+    # [{name,"tcp_inet"},
+    #  {links,[<0.147.0>]},
+    #  {id,56},
+    #  {connected,<0.147.0>},
+    #  {input,0},
+    #  {output,0},
+    #  {os_pid,undefined}]
 
     #
     ## ADDITIONAL
@@ -160,6 +163,9 @@ defmodule Dnscache.Server do
     #
     ## UPSTREAM
     #
+
+    # Forwarding the DNS query to the upstream service and measure execution time
+
     start_time = Erlang.timestamp()
 
     case send_and_receive(
@@ -167,19 +173,27 @@ defmodule Dnscache.Server do
            state[:upstream_dns_server_ip],
            state[:upstream_dns_server_port],
            dns_query_raw,
-           0
+           0,
+           3
          ) do
       {:ok, {_ip, _port, dns_response_raw}} ->
+        # Processing response has to come here
         Logger.debug("#{inspect(dns_response_raw)}")
 
+        # This works because we are sending the raw_query (including the query id)
+        # to upstream
         case GenUdp.send(
                udp_server_socket,
-               source_ip,
-               source_port,
+               dns_query_source_ip,
+               dns_query_source_port,
                dns_response_raw
              ) do
           :ok ->
-            Logger.debug("Response sent sucessfully to client")
+            Logger.info(
+              "source ip: #{ip_to_string(dns_query_source_ip)} header_id #{header_id_int} #{
+                question_qname_string
+              } #{question_qtype_string} #{question_qclass_string}"
+            )
 
           {:error, reason} ->
             Logger.error("Response could not be sent to client! Reason: #{inspect(reason)}")
@@ -202,15 +216,15 @@ defmodule Dnscache.Server do
         {
           :udp,
           socket,
-          source_ip,
-          source_port,
+          dns_query_source_ip,
+          dns_query_source_port,
           catch_all
         },
         state
       ) do
     Logger.error("Received DNS packet (catch_all) #{inspect(catch_all)}")
 
-    GenUdp.send(socket, source_ip, source_port, <<0::8>>)
+    GenUdp.send(socket, dns_query_source_ip, dns_query_source_port, <<0::8>>)
     {:noreply, state}
   end
 
@@ -317,9 +331,9 @@ defmodule Dnscache.Server do
 
   # I do not think this is safe like that
   # I have to match the send and recv packets based on the DNS header id
-  defp send_and_receive(socket, remote_ip, remote_port, packet, retry) do
+  defp send_and_receive(socket, remote_ip, remote_port, packet, retry, max_retries) do
     if retry > 0 do
-      Logger.info("Retrying packet: #{inspect(packet)} retry: #{retry}")
+      Logger.info("Retrying packet: #{inspect(packet)} retry: #{retry} / #{max_retries}")
     end
 
     case GenUdp.send(
@@ -337,7 +351,7 @@ defmodule Dnscache.Server do
             {:ok, {ip, port, response}}
 
           {:error, :timeout} ->
-            send_and_receive(socket, remote_ip, remote_port, packet, retry + 1)
+            send_and_receive(socket, remote_ip, remote_port, packet, retry + 1, max_retries)
 
           {:error, reason} ->
             Logger.error("Could not receive UDP packet, reason #{inspect(reason)}")

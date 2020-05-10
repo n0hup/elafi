@@ -5,30 +5,35 @@
 -export([
   start/0,
   start/2,
-  random_server/0,
   create_dns_request/0,
   send_request/4
-
 ]).
 
--define(SERVERS, [
-  {server0, {127,0,0,1}, 5355},
-  {server1, {127,0,0,1}, 5355}
-]).
+-define(SERVER0, {{192,168,1,110}, 53}).
+-define(NUM_REQUESTS, 1000).
 
 start() ->
-  {_Name, Ip, Port} = random_server(),
+  {Ip, Port} = ?SERVER0,
   start(Ip, Port).
 
 start(Ip, Port) ->
-  {ok, Socket} = gen_udp:open(0, [binary, {active, false}]),
+  {ok, Socket} = gen_udp:open(0, [binary, {active, false}]),  
+  iterate(fun() -> one_test(Socket, Ip, Port) end, ?NUM_REQUESTS, dict:new()).
+
+one_test(Socket, Ip, Port) ->
   {ok, Req} = create_dns_request(),
   {ok, Resp} = send_request(Socket, Ip, Port, Req),
   {header_id_int, HeaderIdInt} = parse_dns_reponse(Resp),
   {ok, HeaderIdInt}.
 
-random_server() ->
-  lists:nth(rand:uniform(length(?SERVERS)), ?SERVERS).
+iterate(_Fn, 0, Stats) ->
+  {ok, Stats};
+iterate(Fn, N, Stats) ->
+  StartTime = erlang:timestamp(),
+  Fn(),
+  EndTime = erlang:timestamp(),
+  TimeSpent = round(timer:now_diff(EndTime, StartTime)),
+  iterate(Fn, N-1, dict:update(TimeSpent, fun (Old) -> Old + 1 end, 1, Stats)).
 
 send_request(Socket, Ip, Port, Req) ->
 	 gen_udp:send(Socket, Ip, Port, Req),
@@ -43,6 +48,19 @@ create_dns_request() ->
 
 parse_dns_reponse(<<HeaderIdInt:16/unsigned-integer, _Rest/binary>>) ->
   {header_id_int, HeaderIdInt}.
+
+% [{1116,2}, {1244,3},  {1427,1},  {1610,1},  {1039,5}]
+
+process_stats(Stats) ->
+  % Order all the values in the data set from smallest to largest.
+
+  % Multiply k percent by the total number of values, n.
+
+  % If the index obtained in Step 2 is not a whole number, round it up to the nearest whole number and go to Step 4a. 
+  % If the index obtained in Step 2 is a whole number, go to Step 4b.
+
+  ok.
+
 
 % , qr_int::unsigned-integer-size(1),
 %            opcode_int::unsigned-integer-size(4), aa_int::unsigned-integer-size(1),
@@ -62,7 +80,6 @@ parse_dns_reponse(<<HeaderIdInt:16/unsigned-integer, _Rest/binary>>) ->
 %   end) ->
 
 %   {ok,ok}.
-
-
   
-  
+% random_server() ->
+%   lists:nth(rand:uniform(length(?SERVERS)), ?SERVERS).  
