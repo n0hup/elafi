@@ -42,7 +42,7 @@ send_request(Socket, Ip, Port, Req) ->
 
 create_dns_request() ->
 	ReqId = rand:uniform(65536),
-  Header = <<ReqId:16, 0:1, 0:4, 0:1, 0:1,1:1, 0:1, 0:3, 0:4, 1:16, 0:16, 0:16, 0:16>>,
+  Header = <<ReqId:16, 0:1, 0:4, 0:1, 0:1, 1:1, 0:1, 0:3, 0:4, 1:16, 0:16, 0:16, 0:16>>,
   Question = <<3, 119, 119, 119, 5, 105, 110, 100, 101, 120, 2, 104, 117, 0, 0, 1, 0, 1>>,
   {ok, <<Header/binary, Question/binary>>}.
 
